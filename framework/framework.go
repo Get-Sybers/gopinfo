@@ -1,4 +1,4 @@
-// Package framework is the container batch runtime the get-sybers tool images
+// Package framework is the batch runtime the get-sybers tools
 // share. The tool-specific glue (artefact discovery and per-item processing)
 // lives in each tool's own package; this package owns the environment
 // contract, the discovery loop, the record files, the idempotency rule, the

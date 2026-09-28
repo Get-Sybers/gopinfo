@@ -22,8 +22,8 @@ import "github.com/get-sybers/gopinfo/framework"
 
 | Package | Purpose |
 |---|---|
-| `framework` | the container batch runtime the get-sybers tool images share: env contract, discovery loop, record files, idempotency, one summary line, exit codes |
-| `batch` | the container batch runtime whose `Process` writes through a provenance-stamping `*record.Writer` |
+| `framework` | the batch runtime the get-sybers tools share: env contract, discovery loop, record files, idempotency, one summary line, exit codes |
+| `batch` | the batch runtime whose `Process` writes through a provenance-stamping `*record.Writer` |
 | `record` | the common record shape and writer of the Linux Go tools |
 | `diskimage` | disk-image discovery, selection, naming and materialise, shared by the image-consuming tools |
 | `discover` | shared input-discovery helpers: deterministic ordering and compressed-stream sniffing |
@@ -32,7 +32,7 @@ import "github.com/get-sybers/gopinfo/framework"
 | `families` | the typed-event engine of the Linux matrix |
 | `tarstream` | consumes the `gomount stream` pipe (a tar archive on stdin) |
 | `tstamp` | normalises artefact timestamps to the envelope's ISO 8601 form |
-| `toolkit` | small, behaviour-identical primitives shared across the container runtimes |
+| `toolkit` | small, behaviour-identical primitives shared across the batch runtimes |
 | `report` | answers "what did this evidence produce?" over a tool run |
 
 The `cmd/pinfo-report` command prints a run's report. See each package's doc

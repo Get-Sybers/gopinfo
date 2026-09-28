@@ -1,4 +1,4 @@
-// Package batch is the container-framework batch runtime the GoDFIR-toolz Go
+// Package batch is the batch runtime the GoDFIR-toolz Go
 // tools share (docs/framework/03 environment contract, 04 self-orchestration)
 // — the module form of the batch.go the Windows Tier-1 tools carry as a
 // byte-identical copy, semantics unchanged, plus the docs/linux rule-2

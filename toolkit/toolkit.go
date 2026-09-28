@@ -1,4 +1,4 @@
-// Package toolkit holds the small, behaviour-identical primitives the container
+// Package toolkit holds the small, behaviour-identical primitives the
 // batch runtimes share (gopinfo/framework and gopinfo/batch): the environment-name
 // derivation, the framework boolean spellings, the writable-dir probe, and the
 // item-path -> output-folder-name fold. Keeping them here means the two runtimes

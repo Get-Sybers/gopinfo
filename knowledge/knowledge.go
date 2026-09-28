@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "time/tzdata" // zones must resolve inside FROM scratch images
+	_ "time/tzdata" // zones resolve without relying on the host tzdata
 
 	"github.com/get-sybers/gopinfo/record"
 )
