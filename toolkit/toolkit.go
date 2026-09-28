@@ -1,5 +1,5 @@
 // Package toolkit holds the small, behaviour-identical primitives the container
-// batch runtimes share (pinfo/framework and pinfo/batch): the environment-name
+// batch runtimes share (gopinfo/framework and gopinfo/batch): the environment-name
 // derivation, the framework boolean spellings, the writable-dir probe, and the
 // item-path -> output-folder-name fold. Keeping them here means the two runtimes
 // (which diverge in their record-writer contract) still share one copy of the
@@ -43,7 +43,10 @@ func EnsureWritableDir(dir string) error {
 		return fmt.Errorf("not writable: %w", err)
 	}
 	name := f.Name()
-	f.Close()
+	if err := f.Close(); err != nil {
+		os.Remove(name)
+		return fmt.Errorf("not writable: %w", err)
+	}
 	return os.Remove(name)
 }
 

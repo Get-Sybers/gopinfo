@@ -101,11 +101,11 @@ func scanJSONL(path string, it *Item) error {
 		if len(line) == 0 {
 			continue
 		}
-		it.Records++
 		var v envelopeView
 		if json.Unmarshal(line, &v) != nil {
 			continue
 		}
+		it.Records++
 		if v.Tool != "" {
 			it.Tool = v.Tool
 		}
