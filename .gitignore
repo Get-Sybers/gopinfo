@@ -1,0 +1,33 @@
+# Built commands. gopinfo is a library module; its only binary is the
+# pinfo-report command, emitted wherever `go build ./cmd/pinfo-report` is run.
+/pinfo-report
+/cmd/pinfo-report/pinfo-report
+
+# Go test, coverage, and profiling artifacts
+*.test
+*.out
+coverage.*
+*.prof
+
+# Go build/test cache when localized into the tree. The default GOCACHE lives
+# under ~/.cache/go-build (outside the repo); this catches a repo-local GOCACHE
+# or tool caches. Matches only directories literally named ".cache".
+.cache/
+
+# Python bytecode cache (fixture generators, if any are added).
+__pycache__/
+*.pyc
+
+# Local-only Go workspace (see the consuming modules' go.mod `replace`; never
+# committed).
+go.work
+go.work.sum
+
+# Editor / OS cruft
+.DS_Store
+*~
+.idea/
+.vscode/
+
+# Go module cache
+/.go/
