@@ -356,7 +356,7 @@ func DecodeXML(b []byte) (any, error) {
 	got := false
 	for {
 		tok, err := dec.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

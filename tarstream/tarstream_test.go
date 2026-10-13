@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
 )
@@ -75,7 +76,7 @@ func TestEachNulTypeflag(t *testing.T) {
 		sum += int(c)
 	}
 	copy(hdr[148:], fmt.Sprintf("%06o\x00 ", sum))
-	img := append(hdr, content...)
+	img := slices.Concat(hdr, content)
 	img = append(img, make([]byte, 512-len(content))...)
 	img = append(img, make([]byte, 1024)...) // end-of-archive blocks
 
