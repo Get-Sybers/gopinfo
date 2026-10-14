@@ -150,7 +150,7 @@ func Entry(t Tool, o Options) {
 			fmt.Printf("%s %s\n", t.Name, o.Version)
 			os.Exit(0)
 		case "print-contract":
-			io.WriteString(os.Stdout, o.Contract)
+			_, _ = io.WriteString(os.Stdout, o.Contract)
 			os.Exit(0)
 		}
 	}
