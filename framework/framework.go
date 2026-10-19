@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Get-Sybers/gopinfo/record"
 	"github.com/Get-Sybers/gopinfo/toolkit"
 )
 
@@ -61,6 +62,16 @@ type Tool struct {
 	// keep their full names rather than one silently skipping the other. Empty
 	// keeps every extension.
 	FoldExts map[string]bool
+	// Stamp, when the binding sets it, resolves the evidence-identity stamp
+	// for one item: the Origin and Host (and parser identity) a caller brands
+	// its records with. The runtime calls it once per item, before Process,
+	// and exposes the result on Config.Stamp; a tool that leaves it nil writes
+	// exactly as before (opt-in, existing callers unaffected). It is the
+	// framework analogue of the batch runtime's per-item manifest/knowledge
+	// join, for the tools (gowindowlicker, signatures, zeek) that write their
+	// own record files rather than through a stamping record.Writer and so
+	// stamp Origin themselves.
+	Stamp func(cfg *Config, item, itemDir string) record.Stamp
 }
 
 // Options carries what the binding main package knows: its stamped version
@@ -81,7 +92,14 @@ type Config struct {
 	Format   string
 	LogLevel int
 	Getenv   func(string) string
+	stamp    record.Stamp
 }
+
+// Stamp is the evidence-identity stamp the runtime resolved for the item
+// being processed — the Origin and Host the tool brands its records with.
+// It is the zero Stamp (all fields empty) when the binding supplied no
+// Tool.Stamp hook, and is valid for the duration of the Process call.
+func (c *Config) Stamp() record.Stamp { return c.stamp }
 
 // Log levels, in decreasing severity; a message prints when its level is at or
 // below the configured one. Everything goes to stderr.
@@ -373,6 +391,9 @@ func runItem(t Tool, cfg *Config, item, itemDir, final string) (int, error) {
 	f, err := os.Create(part)
 	if err != nil {
 		return 0, err
+	}
+	if t.Stamp != nil {
+		cfg.stamp = t.Stamp(cfg, item, itemDir)
 	}
 	n, perr := t.Process(cfg, item, itemDir, f)
 	if cerr := f.Close(); perr == nil {

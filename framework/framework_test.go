@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Get-Sybers/gopinfo/record"
 )
 
 // fakeBatchTool discovers every regular file under INPUT_DIR and "parses" it by
@@ -250,5 +252,78 @@ func TestItemNamesFoldExts(t *testing.T) {
 	}
 	if plain := (Tool{}).itemNames(root, []string{"/in/cap.pcap"}); plain["/in/cap.pcap"] != "cap.pcap" {
 		t.Errorf("no-fold name = %q, want cap.pcap", plain["/in/cap.pcap"])
+	}
+}
+
+// TestStampHook covers the optional evidence-identity hook: when a binding
+// sets Tool.Stamp, the runtime resolves it once per item and exposes it on
+// Config.Stamp for Process to brand its records with; a tool that sets no
+// hook sees the zero stamp, so existing callers are unaffected.
+func TestStampHook(t *testing.T) {
+	in := t.TempDir()
+	if err := os.WriteFile(filepath.Join(in, "epts.bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	discover := func(cfg *Config) ([]string, error) {
+		return []string{filepath.Join(cfg.InputDir, "epts.bin")}, nil
+	}
+
+	// with a hook: the resolved Origin/Host reaches Process via Config.Stamp.
+	out := t.TempDir()
+	var calledWith string
+	hookTool := Tool{
+		Name:     "hooktool",
+		Formats:  []string{"jsonl"},
+		Discover: discover,
+		Stamp: func(cfg *Config, item, itemDir string) record.Stamp {
+			calledWith = item
+			return record.Stamp{
+				Origin: &record.Origin{Image: "img.E01", VolumeGUID: "VOL-GUID"},
+				Host:   &record.Host{MachineID: "machine-1"},
+			}
+		},
+		Process: func(cfg *Config, item, itemDir string, w io.Writer) (int, error) {
+			s := cfg.Stamp()
+			if s.Origin == nil || s.Host == nil {
+				return 0, errors.New("stamp not resolved onto Config")
+			}
+			_, err := io.WriteString(w, s.Origin.Image+"|"+s.Origin.VolumeGUID+"|"+s.Host.MachineID)
+			return 1, err
+		},
+	}
+	var buf bytes.Buffer
+	if code := Run(hookTool, Options{Version: "0.0.0-test"}, envOf(map[string]string{
+		"HOOKTOOL_INPUT_DIR": in, "HOOKTOOL_OUT_DIR": out,
+	}), &buf); code != 0 {
+		t.Fatalf("hook run code=%d out=%q", code, buf.String())
+	}
+	if calledWith == "" {
+		t.Fatal("stamp hook was never called")
+	}
+	got, err := os.ReadFile(filepath.Join(out, "epts.bin", "hooktool.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "img.E01|VOL-GUID|machine-1" {
+		t.Fatalf("resolved stamp not visible to Process: %q", got)
+	}
+
+	// without a hook: Config.Stamp is the zero stamp — existing tools unaffected.
+	noHook := Tool{
+		Name:     "plaintool",
+		Formats:  []string{"jsonl"},
+		Discover: discover,
+		Process: func(cfg *Config, item, itemDir string, w io.Writer) (int, error) {
+			if s := cfg.Stamp(); s.Origin != nil || s.Host != nil {
+				return 0, errors.New("unset hook must leave the zero stamp")
+			}
+			return 0, nil
+		},
+	}
+	var buf2 bytes.Buffer
+	if code := Run(noHook, Options{Version: "0.0.0-test"}, envOf(map[string]string{
+		"PLAINTOOL_INPUT_DIR": in, "PLAINTOOL_OUT_DIR": t.TempDir(),
+	}), &buf2); code != 0 {
+		t.Fatalf("no-hook run code=%d out=%q", code, buf2.String())
 	}
 }
