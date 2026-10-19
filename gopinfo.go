@@ -10,6 +10,9 @@
 // below is reported on every batch summary line.
 package gopinfo
 
-// Version is the gopinfo runtime version, reported as the summary line's
-// "pinfo" key so a record tree states which runtime produced it.
-const Version = "0.1.0"
+// Version is the gopinfo runtime version, reported as the batch summary
+// line's "pinfo" key (and by `pinfo-report --version`) so a record tree
+// states which runtime produced it. It tracks the released module tag — the
+// one home for the version, bumped with each release — so an engine that
+// pins gopinfo reports the version it compiled against.
+const Version = "0.3.0"

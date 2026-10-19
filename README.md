@@ -38,6 +38,34 @@ import "github.com/Get-Sybers/gopinfo/framework"
 The `cmd/pinfo-report` command prints a run's report. See each package's doc
 comment for detail.
 
+## Evidence-asset identity on the record envelope
+
+Every record's `Origin` can carry the identity of the evidence asset it came
+from, joined from the stage manifest (`materialise.jsonl`) at one shared stamp
+site — tool code never computes it. Alongside the existing `Image`, `Volume`,
+`FSUUID` and `Label`, `Origin` carries (additive, `omitempty`):
+
+| Field | Scope | Meaning |
+|---|---|---|
+| `ImageSHA256` | image | sha256 of the acquisition/container bytes |
+| `DiskSerial` | image | drive/device serial (EWF `sn`, VM container uuid); omitted for raw/dd/QCOW2 |
+| `DiskID` | disk | GPT disk GUID, or MBR disk signature (hex) |
+| `VolumeGUID` | volume | volume GUID identity: Linux/mac `FSUUID` when it is a canonical 128-bit UUID; empty on Windows at extraction |
+| `PartGUID` | volume | GPT unique partition GUID; omitted on MBR |
+| `PartOffset` | volume | partition byte offset |
+
+A field absent for a format or OS is omitted, never faked. The host's own
+identity is **not** an `Origin` field — it rides `Host.MachineID`. `gomount`
+writes the matching manifest keys (`image_sha256`, `disk_serial`, `disk_id` on
+the path-less metadata row; `volume_guid`, `part_guid`, `part_offset` per row),
+which `record.Manifest` fills fill-only-blank — the frozen gopinfo↔gomount
+Origin field contract.
+
+Tools built on the `framework` runtime (those that write their own record
+files rather than through a stamping `record.Writer`) can opt in to the same
+provenance by setting `Tool.Stamp`: the runtime resolves it per item and
+exposes the `Origin` and `Host` on `Config.Stamp`.
+
 ## Build & test
 
 Standard library only, so the module builds and tests standalone:

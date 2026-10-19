@@ -62,8 +62,14 @@ func TestWriterJSONLStampsFillOnlyBlank(t *testing.T) {
 func TestManifest(t *testing.T) {
 	dir := t.TempDir()
 	rows := strings.Join([]string{
-		`{"image":"disk.dd","volume":"p2"}`,
+		`{"image":"disk.dd","volume":"p2",` +
+			`"image_sha256":"d1f2","disk_serial":"WD-WX11","disk_id":"DISK-GUID-1",` +
+			`"volume_guid":"VOL-GUID-DEF","part_guid":"PART-GUID-DEF","part_offset":1048576}`,
 		`{"path":"\\Users\\Bob\\NTUSER.DAT","size":1,"mtime":"x","mftid":77}`,
+		// a row carrying its own volume-scoped identity: it must win over the
+		// path-less defaults, while the image-level keys still fall back.
+		// part_offset 5 GiB (>2^32) proves the uint64 keeps its precision.
+		`{"path":"etc/fstab","volume_guid":"VOL-GUID-ROW","part_guid":"PART-GUID-ROW","part_offset":5368709120}`,
 		`{"path":"var/log/audit/audit.log","staged":"residue/orphan-9/var/log/audit/audit.log",` +
 			`"inode":9,"residue":{"kind":"orphan_inode","detail":"inode 9"}}`,
 		// 2^53+1: float64 would round this to ...992 — UseNumber keeps it.
@@ -83,8 +89,26 @@ func TestManifest(t *testing.T) {
 	if o == nil || o.Image != "disk.dd" || o.Volume != "p2" || o.Path != "/Users/Bob/NTUSER.DAT" || o.Inode != 77 {
 		t.Fatalf("ntfs row: %+v", o)
 	}
+	// evidence-asset identity fills, fill-only-blank, from the path-less
+	// metadata row like image/volume above.
+	if o.ImageSHA256 != "d1f2" || o.DiskSerial != "WD-WX11" || o.DiskID != "DISK-GUID-1" {
+		t.Fatalf("image-level identity defaults not filled: %+v", o)
+	}
+	if o.VolumeGUID != "VOL-GUID-DEF" || o.PartGUID != "PART-GUID-DEF" || o.PartOffset != 1048576 {
+		t.Fatalf("volume-scoped identity defaults not filled: %+v", o)
+	}
 	if s != nil || r != nil {
 		t.Fatalf("unexpected snapshot/residue: %v %v", s, r)
+	}
+
+	// a row with its own volume-scoped identity: the per-row values win, the
+	// image-level keys still fall back to the path-less defaults.
+	o, _, _ = m.Stamp("etc/fstab")
+	if o == nil || o.VolumeGUID != "VOL-GUID-ROW" || o.PartGUID != "PART-GUID-ROW" || o.PartOffset != 5368709120 {
+		t.Fatalf("per-row volume identity: %+v", o)
+	}
+	if o.ImageSHA256 != "d1f2" || o.DiskSerial != "WD-WX11" || o.DiskID != "DISK-GUID-1" {
+		t.Fatalf("image-level identity defaults not filled on per-row-volume row: %+v", o)
 	}
 	// case-insensitive staged-tree lookup
 	if o2, _, _ := m.Stamp("users/bob/ntuser.dat"); o2 == nil {

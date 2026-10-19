@@ -37,6 +37,30 @@ type Origin struct {
 	Label  string `json:"Label,omitempty"`
 	Path   string `json:"Path,omitempty"`
 	Inode  uint64 `json:"Inode,omitempty"`
+
+	// Evidence-asset identity, joined from the stage manifest alongside the
+	// fields above (the gopinfo↔gomount Origin field contract, frozen
+	// 2026-10-19). Additive and omitempty: a value absent for a format or OS
+	// is omitted, never faked (raw/dd/QCOW2 carry no serial; NTFS has no
+	// FSUUID; Windows leaves VolumeGUID empty at extraction). The host's own
+	// identity is not here — it rides the existing Host.MachineID.
+
+	// ImageSHA256 is the sha256 of the acquisition/container bytes and
+	// DiskSerial the drive/device serial (EWF header sn, VM container uuid,
+	// omitted for raw/dd/QCOW2) — both image-scoped.
+	ImageSHA256 string `json:"ImageSHA256,omitempty"`
+	DiskSerial  string `json:"DiskSerial,omitempty"`
+	// DiskID is the GPT disk GUID, or the MBR disk signature (hex) on an MBR
+	// disk.
+	DiskID string `json:"DiskID,omitempty"`
+	// VolumeGUID, PartGUID and PartOffset are volume-scoped. VolumeGUID is the
+	// volume's GUID identity — on Linux/mac the FSUUID when it is a canonical
+	// 128-bit UUID, empty on Windows at extraction (byakugan derives
+	// \\?\Volume{GUID}). PartGUID is the GPT unique partition GUID, omitted on
+	// MBR; PartOffset is the partition's byte offset.
+	VolumeGUID string `json:"VolumeGUID,omitempty"`
+	PartGUID   string `json:"PartGUID,omitempty"`
+	PartOffset uint64 `json:"PartOffset,omitempty"`
 }
 
 // Snapshot marks a record that came out of a snapshot (docs/linux §6.4);
@@ -179,17 +203,29 @@ func (rw *Writer) Flush() error { return rw.bw.Flush() }
 const ManifestName = "materialise.jsonl"
 
 // Manifest resolves a staged path to its origin chain. Rows are parsed
-// permissively: today's gomount fields (path, size, mtime, mftid) and the
+// permissively: today's gomount fields (path, size, mtime, mftid), the
 // docs/linux §5.4 origin-record fields (image, volume, inode, snapshot{},
-// residue{}, staged) are all understood, unknown keys are ignored, and a
-// row without a path is read as manifest-level metadata (image/volume
-// defaults).
+// residue{}, staged) and the evidence-asset identity keys of the
+// gopinfo↔gomount Origin field contract (image-scoped image_sha256,
+// disk_serial, disk_id; volume-scoped volume_guid, part_guid, part_offset)
+// are all understood, unknown keys are ignored, and a row without a path is
+// read as manifest-level metadata (image/volume defaults).
 type Manifest struct {
 	image  string
 	volume string
 	fsuuid string
 	label  string
-	rows   map[string]manifestRow
+	// evidence-asset identity defaults, carried on the path-less metadata row
+	// like image/volume above (the gopinfo↔gomount Origin field contract):
+	// the image-scoped image_sha256/disk_serial/disk_id and the selected
+	// volume's volume_guid/part_guid/part_offset.
+	imageSHA256 string
+	diskSerial  string
+	diskID      string
+	volumeGUID  string
+	partGUID    string
+	partOffset  uint64
+	rows        map[string]manifestRow
 }
 
 type manifestRow struct {
@@ -269,15 +305,39 @@ func (m *Manifest) addRow(raw map[string]any) {
 		if v := get("label"); v != "" {
 			m.label = v
 		}
+		if v := get("image_sha256"); v != "" {
+			m.imageSHA256 = v
+		}
+		if v := get("disk_serial"); v != "" {
+			m.diskSerial = v
+		}
+		if v := get("disk_id"); v != "" {
+			m.diskID = v
+		}
+		if v := get("volume_guid"); v != "" {
+			m.volumeGUID = v
+		}
+		if v := get("part_guid"); v != "" {
+			m.partGUID = v
+		}
+		if v := getU("part_offset"); v > 0 {
+			m.partOffset = v
+		}
 		return
 	}
 	row := manifestRow{origin: Origin{
-		Image:  get("image"),
-		Volume: get("volume"),
-		FSUUID: get("fsuuid"),
-		Label:  get("label"),
-		Path:   volumePath(path),
-		Inode:  getU("inode", "mftid"),
+		Image:       get("image"),
+		Volume:      get("volume"),
+		FSUUID:      get("fsuuid"),
+		Label:       get("label"),
+		ImageSHA256: get("image_sha256"),
+		DiskSerial:  get("disk_serial"),
+		DiskID:      get("disk_id"),
+		VolumeGUID:  get("volume_guid"),
+		PartGUID:    get("part_guid"),
+		PartOffset:  getU("part_offset"),
+		Path:        volumePath(path),
+		Inode:       getU("inode", "mftid"),
 	}}
 	if s, ok := raw["snapshot"].(map[string]any); ok {
 		row.snapshot = &Snapshot{
@@ -338,6 +398,24 @@ func (m *Manifest) Stamp(rel string) (*Origin, *Snapshot, *Residue) {
 	}
 	if o.Label == "" {
 		o.Label = m.label
+	}
+	if o.ImageSHA256 == "" {
+		o.ImageSHA256 = m.imageSHA256
+	}
+	if o.DiskSerial == "" {
+		o.DiskSerial = m.diskSerial
+	}
+	if o.DiskID == "" {
+		o.DiskID = m.diskID
+	}
+	if o.VolumeGUID == "" {
+		o.VolumeGUID = m.volumeGUID
+	}
+	if o.PartGUID == "" {
+		o.PartGUID = m.partGUID
+	}
+	if o.PartOffset == 0 {
+		o.PartOffset = m.partOffset
 	}
 	return &o, row.snapshot, row.residue
 }
