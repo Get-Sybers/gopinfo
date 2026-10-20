@@ -15,4 +15,4 @@ package gopinfo
 // states which runtime produced it. It tracks the released module tag — the
 // one home for the version, bumped with each release — so an engine that
 // pins gopinfo reports the version it compiled against.
-const Version = "0.3.0"
+const Version = "0.3.1"

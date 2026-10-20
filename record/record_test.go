@@ -163,3 +163,65 @@ func TestWriterCountOnEncodeError(t *testing.T) {
 		t.Fatalf("count %d", w.Count())
 	}
 }
+
+// TestStampFill covers the fill-only merge the batch injection hook relies on:
+// the base stamp wins every field it already carries, the fallback fills only
+// the blanks, Origin and Host merge field by field, and neither input's
+// pointee is mutated.
+func TestStampFill(t *testing.T) {
+	base := Stamp{
+		Tool:           "gohunt",
+		SourceFilename: "var/log/wtmp",
+		Origin:         &Origin{Image: "srv.E01", DiskSerial: "BASE-DS"},
+		Host:           &Host{Hostname: "srv01"},
+	}
+	inj := Stamp{
+		Tool:        "ignored", // base already set Tool — base wins
+		ToolVersion: "1.2.3",   // base blank — filled
+		Origin:      &Origin{DiskSerial: "INJ-DS", VolumeGUID: "INJ-VG", ImageSHA256: "INJ-SHA"},
+		Host:        &Host{Hostname: "ignored", MachineID: "machine-1"},
+	}
+	got := base.Fill(inj)
+
+	if got.Tool != "gohunt" || got.ToolVersion != "1.2.3" || got.SourceFilename != "var/log/wtmp" {
+		t.Fatalf("scalar fill wrong: %+v", got)
+	}
+	if got.Origin.DiskSerial != "BASE-DS" {
+		t.Fatalf("base DiskSerial overwritten by fallback: %q", got.Origin.DiskSerial)
+	}
+	if got.Origin.Image != "srv.E01" || got.Origin.VolumeGUID != "INJ-VG" || got.Origin.ImageSHA256 != "INJ-SHA" {
+		t.Fatalf("Origin field merge wrong: %+v", got.Origin)
+	}
+	if got.Host.Hostname != "srv01" || got.Host.MachineID != "machine-1" {
+		t.Fatalf("Host field merge wrong: %+v", got.Host)
+	}
+
+	// purity: Fill copies, so neither input's pointee is mutated.
+	if base.Origin.VolumeGUID != "" || base.Origin.ImageSHA256 != "" || base.Host.MachineID != "" {
+		t.Fatalf("base pointee mutated: %+v %+v", base.Origin, base.Host)
+	}
+	if inj.Origin.DiskSerial != "INJ-DS" {
+		t.Fatalf("fallback pointee mutated: %+v", inj.Origin)
+	}
+
+	// nil base Origin/Host: the injected ones become the result (loose evidence).
+	loose := Stamp{Tool: "gohunt"}.Fill(Stamp{
+		Origin: &Origin{DiskSerial: "DS", VolumeGUID: "VG"},
+		Host:   &Host{MachineID: "m"},
+	})
+	if loose.Origin == nil || loose.Origin.DiskSerial != "DS" || loose.Origin.VolumeGUID != "VG" {
+		t.Fatalf("nil-base Origin not filled from injection: %+v", loose.Origin)
+	}
+	if loose.Host == nil || loose.Host.MachineID != "m" {
+		t.Fatalf("nil-base Host not filled from injection: %+v", loose.Host)
+	}
+
+	// nil fallback pointers: no spurious non-nil Origin/Host synthesised.
+	none := Stamp{Tool: "gohunt"}.Fill(Stamp{})
+	if none.Origin != nil || none.Host != nil {
+		t.Fatalf("nil fallback must not synthesise Origin/Host: %+v", none)
+	}
+	if none.Tool != "gohunt" {
+		t.Fatalf("base scalar lost: %+v", none)
+	}
+}

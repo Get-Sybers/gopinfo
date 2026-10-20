@@ -159,6 +159,119 @@ func (s Stamp) apply(e *Envelope) {
 	}
 }
 
+// Fill returns s with every field it left empty completed from fallback,
+// keeping every field s already set — the fill-only rule (decision 14)
+// applied between two stamps rather than onto an Envelope. A runtime that
+// resolves a stamp itself (the batch manifest + knowledge join) layers an
+// injected one beneath it with base.Fill(injected): the injected values —
+// a registry-sourced spindle, say — fill only what the runtime could not
+// resolve and never overwrite it, matching byakugan's own l1physical.Stamp
+// (which fills a record's blank physical-identity fields beside its native
+// values). Origin and Host merge field by field, so a partial base Origin
+// and a partial injected spindle combine rather than either masking the
+// other. Pure: neither s's nor fallback's pointees are mutated.
+func (s Stamp) Fill(fallback Stamp) Stamp {
+	if s.Tool == "" {
+		s.Tool = fallback.Tool
+	}
+	if s.ToolVersion == "" {
+		s.ToolVersion = fallback.ToolVersion
+	}
+	if s.SourceFilename == "" {
+		s.SourceFilename = fallback.SourceFilename
+	}
+	if s.SourceModified == "" {
+		s.SourceModified = fallback.SourceModified
+	}
+	s.Origin = fillOrigin(s.Origin, fallback.Origin)
+	if s.Snapshot == nil {
+		s.Snapshot = fallback.Snapshot
+	}
+	if s.Residue == nil {
+		s.Residue = fallback.Residue
+	}
+	s.Host = fillHost(s.Host, fallback.Host)
+	return s
+}
+
+// fillOrigin merges from into base field by field, base winning every field
+// it already carries — the Origin half of Stamp.Fill. It returns a copy, so
+// neither argument's pointee is mutated; a nil base with a non-nil from
+// yields a copy of from (the loose-evidence case, where the injected spindle
+// becomes the whole Origin), and from nil leaves base untouched.
+func fillOrigin(base, from *Origin) *Origin {
+	if from == nil {
+		return base
+	}
+	var o Origin
+	if base != nil {
+		o = *base
+	}
+	if o.Image == "" {
+		o.Image = from.Image
+	}
+	if o.Volume == "" {
+		o.Volume = from.Volume
+	}
+	if o.FSUUID == "" {
+		o.FSUUID = from.FSUUID
+	}
+	if o.Label == "" {
+		o.Label = from.Label
+	}
+	if o.Path == "" {
+		o.Path = from.Path
+	}
+	if o.Inode == 0 {
+		o.Inode = from.Inode
+	}
+	if o.ImageSHA256 == "" {
+		o.ImageSHA256 = from.ImageSHA256
+	}
+	if o.DiskSerial == "" {
+		o.DiskSerial = from.DiskSerial
+	}
+	if o.DiskID == "" {
+		o.DiskID = from.DiskID
+	}
+	if o.VolumeGUID == "" {
+		o.VolumeGUID = from.VolumeGUID
+	}
+	if o.PartGUID == "" {
+		o.PartGUID = from.PartGUID
+	}
+	if o.PartOffset == 0 {
+		o.PartOffset = from.PartOffset
+	}
+	return &o
+}
+
+// fillHost merges from into base field by field, base winning — the Host
+// half of Stamp.Fill. Like fillOrigin it returns a copy and treats a nil
+// base as all-blank.
+func fillHost(base, from *Host) *Host {
+	if from == nil {
+		return base
+	}
+	var h Host
+	if base != nil {
+		h = *base
+	}
+	if h.Hostname == "" {
+		h.Hostname = from.Hostname
+	}
+	if h.MachineID == "" {
+		h.MachineID = from.MachineID
+	}
+	if h.OS == "" {
+		h.OS = from.OS
+	}
+	if h.Timezone == "" {
+		h.Timezone = from.Timezone
+	}
+	return &h
+}
+
 // Writer writes a tool's records as JSONL — one JSON object per line —
 // stamping the envelope on every record.
 type Writer struct {
