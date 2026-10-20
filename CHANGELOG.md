@@ -49,7 +49,7 @@ All notable changes are documented here, following
   security policy and a pull-request template.
 
 ### Fixed
-- The stale `gopinfo.Version` constant (`0.1.0` → `0.3.1`), so the batch
+- The stale `gopinfo.Version` constant (`0.1.0` → `0.4.0`), so the batch
   summary's `pinfo` key and `pinfo-report --version` report the real runtime
   version the record tree was produced by.
 - The findings the new lint gate surfaced: unchecked writes made explicit,
