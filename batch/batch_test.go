@@ -246,3 +246,106 @@ func TestRelItem(t *testing.T) {
 		}
 	}
 }
+
+// readRec reads the single record the fake tool wrote to path.
+func readRec(t *testing.T, path string) fakeRecord {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec fakeRecord
+	if err := json.Unmarshal(bytes.TrimSpace(b), &rec); err != nil {
+		t.Fatal(err)
+	}
+	return rec
+}
+
+// TestBatchStampHook covers the optional injection hook, the batch analogue of
+// the framework stamp hook: a binding that sets Tool.Stamp supplies a per-item
+// spindle, merged fill-only beneath the manifest/knowledge-derived stamp and
+// applied through the record.Writer. On loose evidence (no manifest) the
+// injected spindle becomes the Origin; a field the manifest already carries is
+// never overwritten; and a tool with no hook stamps exactly as before.
+func TestBatchStampHook(t *testing.T) {
+	// loose evidence, with a hook: the injected spindle reaches the record,
+	// and the runtime still supplies the item-intrinsic envelope fields.
+	in, out, env := dirs(t)
+	write(t, in, "wtmp", "bytes")
+	tool := fakeTool()
+	var calledItem, calledDir string
+	tool.Stamp = func(cfg *Config, item, itemDir string) record.Stamp {
+		calledItem, calledDir = item, itemDir
+		return record.Stamp{
+			Origin: &record.Origin{DiskSerial: "DS-1", VolumeGUID: "VG-1", ImageSHA256: "SHA-1"},
+			Host:   &record.Host{MachineID: "host-1"},
+		}
+	}
+	var buf bytes.Buffer
+	if code := Run(tool, Options{Version: "9.9.9"}, envOf(env), &buf); code != 0 {
+		t.Fatalf("hook run code=%d out=%q", code, buf.String())
+	}
+	if calledItem == "" || calledDir == "" {
+		t.Fatalf("hook not called with item/itemDir: %q %q", calledItem, calledDir)
+	}
+	rec := readRec(t, filepath.Join(out, "wtmp", "faketool.jsonl"))
+	if rec.Origin == nil || rec.Origin.DiskSerial != "DS-1" ||
+		rec.Origin.VolumeGUID != "VG-1" || rec.Origin.ImageSHA256 != "SHA-1" {
+		t.Fatalf("injected spindle not on record Origin: %+v", rec.Origin)
+	}
+	if rec.Host == nil || rec.Host.MachineID != "host-1" {
+		t.Fatalf("injected host.id not on record Host: %+v", rec.Host)
+	}
+	if rec.Tool != "faketool" || rec.SourceFilename != "wtmp" || rec.SourceModified == "" {
+		t.Fatalf("runtime envelope fields lost under injection: %+v", rec.Envelope)
+	}
+
+	// manifest present: fill-only. The manifest wins where it has a value; the
+	// injected spindle fills only what the manifest left blank.
+	in2, out2, env2 := dirs(t)
+	write(t, in2, "wtmp", "bytes")
+	write(t, in2, record.ManifestName, strings.Join([]string{
+		`{"image":"srv.E01","volume":"vg0/root","disk_serial":"MANIFEST-DS"}`,
+		`{"path":"wtmp","staged":"wtmp"}`,
+	}, "\n")+"\n")
+	tool2 := fakeTool()
+	tool2.Stamp = func(cfg *Config, item, itemDir string) record.Stamp {
+		return record.Stamp{
+			Origin: &record.Origin{DiskSerial: "INJECT-DS", VolumeGUID: "INJECT-VG", ImageSHA256: "INJECT-SHA"},
+			Host:   &record.Host{MachineID: "inject-host"},
+		}
+	}
+	var buf2 bytes.Buffer
+	if code := Run(tool2, Options{Version: "9.9.9"}, envOf(env2), &buf2); code != 0 {
+		t.Fatalf("manifest+hook run code=%d out=%q", code, buf2.String())
+	}
+	rec2 := readRec(t, filepath.Join(out2, "wtmp", "faketool.jsonl"))
+	if rec2.Origin == nil {
+		t.Fatal("origin missing under manifest+hook")
+	}
+	if rec2.Origin.DiskSerial != "MANIFEST-DS" {
+		t.Fatalf("manifest disk_serial overwritten by injection: %q", rec2.Origin.DiskSerial)
+	}
+	if rec2.Origin.Image != "srv.E01" || rec2.Origin.Volume != "vg0/root" {
+		t.Fatalf("manifest origin fields lost: %+v", rec2.Origin)
+	}
+	if rec2.Origin.VolumeGUID != "INJECT-VG" || rec2.Origin.ImageSHA256 != "INJECT-SHA" {
+		t.Fatalf("injection did not fill blank spindle fields: %+v", rec2.Origin)
+	}
+	if rec2.Host == nil || rec2.Host.MachineID != "inject-host" {
+		t.Fatalf("injected host did not fill (no knowledge mounted): %+v", rec2.Host)
+	}
+
+	// no hook: records stamp exactly as before — loose evidence leaves
+	// Origin/Host unset, so existing callers are unaffected.
+	in3, out3, env3 := dirs(t)
+	write(t, in3, "wtmp", "bytes")
+	var buf3 bytes.Buffer
+	if code := Run(fakeTool(), Options{Version: "9.9.9"}, envOf(env3), &buf3); code != 0 {
+		t.Fatalf("no-hook run code=%d out=%q", code, buf3.String())
+	}
+	rec3 := readRec(t, filepath.Join(out3, "wtmp", "faketool.jsonl"))
+	if rec3.Origin != nil || rec3.Host != nil {
+		t.Fatalf("no-hook loose evidence must leave Origin/Host unset: %+v", rec3.Envelope)
+	}
+}

@@ -21,6 +21,22 @@ All notable changes are documented here, following
   can supply a per-item `Origin` and `Host` to brand its records with, the
   framework analogue of the batch runtime's manifest join. Opt-in; a tool that
   sets no hook is unaffected.
+- The batch analogue of that hook on the `batch` runtime (`Tool.Stamp`, same
+  signature): a binding may supply a per-item stamp — typically a
+  registry-sourced spindle (`host.id` / `disk_serial` / `volume_guid` /
+  `image_sha256`) the engine reads from byakugan's `L1-physical.db` — which the
+  runtime merges beneath the stamp it resolves from the stage manifest and the
+  knowledge store, then applies through the item's stamping `record.Writer`.
+  The injection is fill-only (`record.Stamp.Fill`): it completes only the
+  `Origin`/`Host` fields the manifest/knowledge join left blank and never
+  overwrites them (decision 14), so on loose evidence the injected spindle
+  becomes the record `Origin`, matching byakugan's own `l1physical.Stamp`.
+  Opt-in; `gopinfo` stays stdlib-only — the SQLite-backed registry lives in
+  byakugan's `go/l1physical` module, engine-side. The L1-physical phase-2
+  injection point (byakugan#136).
+- `record.Stamp.Fill`: a fill-only merge of two stamps (field by field across
+  `Origin` and `Host`), the primitive the batch hook layers an injected
+  spindle beneath the runtime-resolved stamp with.
 - The conformance gate of the get-sybers standard (DX_DFIR
   `docs/reference/build-and-test.md`): `make conform` (gofmt, vet, build,
   shuffled tests with coverage, `go mod tidy -diff`, cross-compile targets, a
@@ -33,7 +49,7 @@ All notable changes are documented here, following
   security policy and a pull-request template.
 
 ### Fixed
-- The stale `gopinfo.Version` constant (`0.1.0` → `0.3.0`), so the batch
+- The stale `gopinfo.Version` constant (`0.1.0` → `0.4.0`), so the batch
   summary's `pinfo` key and `pinfo-report --version` report the real runtime
   version the record tree was produced by.
 - The findings the new lint gate surfaced: unchecked writes made explicit,

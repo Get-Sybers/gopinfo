@@ -59,6 +59,23 @@ type Tool struct {
 	// files beside it. It returns the number of records written (w.Count()
 	// unless the tool writes elsewhere too).
 	Process func(cfg *Config, item, itemDir string, w *record.Writer) (records int, err error)
+	// Stamp, when the binding sets it, supplies a per-item evidence-identity
+	// stamp — typically a registry-sourced spindle (host.id / disk_serial /
+	// volume_guid / image_sha256) the engine reads from byakugan's
+	// L1-physical.db — which the runtime merges beneath the stamp it resolves
+	// itself from the stage manifest and the knowledge store, before
+	// installing it on the item's record.Writer. The runtime calls it once
+	// per item, before Process. The injected stamp is fill-only: it completes
+	// only the Origin/Host fields the manifest/knowledge join left blank and
+	// never overwrites them (docs/linux decision 14), so on loose evidence
+	// (no manifest) the injected spindle becomes the record Origin, while a
+	// tool that leaves it nil stamps exactly as before — opt-in, existing
+	// callers unaffected. It is the batch analogue of framework.Tool.Stamp:
+	// an engine binds both runtimes through the same signature. The batch
+	// runtime applies the result through its stamping record.Writer, so a
+	// bound tool needs no change to pick it up (the framework runtime, whose
+	// tools write their own record files, instead exposes it on Config.Stamp).
+	Stamp func(cfg *Config, item, itemDir string) record.Stamp
 }
 
 // Options carries what the binding main package knows: its stamped version
@@ -361,7 +378,7 @@ func runItem(t Tool, o Options, cfg *Config, item, itemDir, final string) (int, 
 		return 0, err
 	}
 	w := record.NewWriter(f)
-	w.SetStamp(itemStamp(t, o, cfg, item))
+	w.SetStamp(itemStamp(t, o, cfg, item, itemDir))
 	n, perr := t.Process(cfg, item, itemDir, w)
 	if ferr := w.Flush(); perr == nil {
 		perr = ferr
@@ -381,8 +398,9 @@ func runItem(t Tool, o Options, cfg *Config, item, itemDir, final string) (int, 
 }
 
 // itemStamp resolves the envelope stamp for one item: the parser identity,
-// the source path and mtime, and the manifest-joined provenance.
-func itemStamp(t Tool, o Options, cfg *Config, item string) record.Stamp {
+// the source path and mtime, the manifest-joined provenance, and — when the
+// binding sets Tool.Stamp — a per-item injected spindle merged beneath it.
+func itemStamp(t Tool, o Options, cfg *Config, item, itemDir string) record.Stamp {
 	rel := relItem(cfg.InputDir, item)
 	s := record.Stamp{
 		Tool:           t.Name,
@@ -394,5 +412,13 @@ func itemStamp(t Tool, o Options, cfg *Config, item string) record.Stamp {
 	}
 	s.Origin, s.Snapshot, s.Residue = cfg.manifest.Stamp(rel)
 	s.Host = cfg.knowledge.Host()
+	// The optional injection hook (decision 14, fill-only): a binding that
+	// sets Tool.Stamp supplies a registry-sourced spindle, merged beneath the
+	// manifest/knowledge-derived stamp above — it fills what that join could
+	// not resolve and never overwrites it. The batch analogue of the
+	// framework stamp hook.
+	if t.Stamp != nil {
+		s = s.Fill(t.Stamp(cfg, item, itemDir))
+	}
 	return s
 }
